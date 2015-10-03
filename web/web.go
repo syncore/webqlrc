@@ -8,9 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"qlrcon/bridge"
 	"text/template"
 	"time"
+	"webqlrcon/bridge"
 )
 
 // intToDuration converts WebPongTimeout and WebSendTimeout to time.Duration
@@ -27,7 +27,6 @@ type webSocketConn struct {
 
 const (
 	webCfgFilename = "conf/web.conf"
-	version        = "0.1"
 )
 
 var (
@@ -143,17 +142,11 @@ func StartWeb() {
 	if err != nil {
 		log.Fatalf("FATAL: unable to read web configuration file: %s", err)
 	}
-	cfg = &webConfig{
-		WebMaxMessageSize: webconfig.WebMaxMessageSize,
-		WebPongTimeout:    webconfig.WebPongTimeout,
-		WebSendTimeout:    webconfig.WebSendTimeout,
-		WebServerPort:     webconfig.WebServerPort,
-	}
-
+	cfg = webconfig
 	http.HandleFunc("/", serveRoot)
 	http.HandleFunc("/ws", serveWs)
 	port := fmt.Sprintf(":%d", cfg.WebServerPort)
-	log.Printf("qlrcon v%s: starting web server on http://localhost%s", version, port)
+	log.Printf("webqlrcon: Starting web server on http://localhost%s", port)
 	err = http.ListenAndServe(port, nil)
 	if err != nil {
 		log.Fatalf("FATAL: unable to start webserver: %s", err)

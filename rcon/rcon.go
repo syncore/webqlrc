@@ -5,55 +5,57 @@ import (
 	"encoding/json"
 	"fmt"
 	zmq "github.com/pebbe/zmq4"
+	"log"
 	"math/rand"
 	"os"
-	"qlrcon/bridge"
 	"sync"
 	"time"
+	"webqlrcon/bridge"
 )
 
 type qlZmqConfig struct {
+	// for JSON
 	QlZmqHost            string
 	QlZmqRconPort        int
 	QlZmqRconPassword    string
 	QlZmqRconPollTimeOut time.Duration
 }
 
+type qlSocketOrMsgType int
+
 type message struct {
-	content      []byte
 	incoming     chan string
+	msgType      qlSocketOrMsgType
 	timeReceived time.Time
 }
-
-type qlSocketType int
-
-const (
-	qlZmqCfgFilename              = "conf/rcon.conf"
-	socketRcon       qlSocketType = 0
-	socketMonitor    qlSocketType = 1
-	monitorAddress                = "inproc://monitor-sock"
-)
-
-var cfg *qlZmqConfig
 
 type qlZmqSocket struct {
 	address      string
 	context      *zmq.Context
-	mut          sync.Mutex
 	socket       *zmq.Socket
-	typeQlSocket qlSocketType
+	typeQlSocket qlSocketOrMsgType
 }
 
-func newQlZmqSocket(address string, context *zmq.Context, socktype zmq.Type) (*qlZmqSocket, error) {
-	s, err := zmq.NewSocket(socktype)
-	var qlstype qlSocketType
-	if socktype == zmq.DEALER {
-		qlstype = socketRcon
-	} else if socktype == zmq.PAIR {
-		qlstype = socketMonitor
+const (
+	qlZmqCfgFilename                   = "conf/rcon.conf"
+	smtRcon          qlSocketOrMsgType = 0
+	smtMonitor       qlSocketOrMsgType = 1
+	monitorAddress                     = "inproc://monitor-sock"
+)
+
+var cfg *qlZmqConfig
+var socketMutex = &sync.Mutex{}
+
+func newQlZmqSocket(address string, context *zmq.Context, zmqSockType zmq.Type) (*qlZmqSocket, error) {
+	s, err := zmq.NewSocket(zmqSockType)
+	var qlstype qlSocketOrMsgType
+	if zmqSockType == zmq.DEALER {
+		qlstype = smtRcon
+	} else if zmqSockType == zmq.PAIR {
+		qlstype = smtMonitor
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s", socktype)
+		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s", zmqSockType)
 	}
 	return &qlZmqSocket{
 		address:      address,
@@ -63,7 +65,7 @@ func newQlZmqSocket(address string, context *zmq.Context, socktype zmq.Type) (*q
 	}, nil
 }
 
-func initSockets() ([]*qlZmqSocket, error) {
+func createSockets() ([]*qlZmqSocket, error) {
 	ctx, err := zmq.NewContext()
 	if err != nil {
 		return nil, fmt.Errorf("Context error: %s", err)
@@ -92,22 +94,10 @@ func initSockets() ([]*qlZmqSocket, error) {
 	return socks, nil
 }
 
-//func processRconMessage(incoming <-chan string, rconsock *QlZmqSocket) {
-//	for msg := range incoming {
-//		fmt.Printf("Got msg in processRconMessage: %s\n", msg)
-//		if strings.Contains(msg, "x0x0") {
-//			rconsock.doRconAction("say hello")
-//		}
-//		if strings.Contains(msg, "b0b0") {
-//			rconsock.doRconAction("say goodbye")
-//		}
-//	}
-//}
-
 func (rconsock *qlZmqSocket) doRconAction(action string) {
 	// ZMQ sockets are not thread-safe
-	rconsock.mut.Lock()
-	defer rconsock.mut.Unlock()
+	socketMutex.Lock()
+	defer socketMutex.Unlock()
 	rconsock.socket.Send(action, 0)
 }
 
@@ -127,93 +117,76 @@ func openQlConnection(s *qlZmqSocket, password string) error {
 	return nil
 }
 
-func readZmqMonitorSocketMsg(msg *message) {
-	// Right now we're only we're only reading from the channel
+func readZmqSocketMsg(msg *message) {
 	for m := range msg.incoming {
-		fmt.Printf("Monitor socket: %s\n", m)
+		// Eventually printing wont be used, since everything is shown in web
+		if msg.msgType == smtMonitor {
+			fmt.Printf("[Monitor] %s\n", m)
+		} else if msg.msgType == smtRcon {
+			fmt.Printf("[Rcon] %s\n", m)
+		}
 		// send to web ui
 		bridge.MessageBridge.RconToWeb <- []byte(m)
 	}
 }
 
-func readZmqRconSocketMsg(msg *message, rconsock *qlZmqSocket) {
-	//go processRconMessage(msg.Outgoing, rconsock)
-	for m := range msg.incoming {
-		fmt.Printf("Rcon socket: %s\n", m)
-
-		// send to web ui
-		bridge.MessageBridge.RconToWeb <- []byte(m)
-
-		//		if strings.Contains(m, "hey") {
-		//			msg.Outgoing <- "x0x0"
-		//		}
-		//		if strings.Contains(m, "byebye") {
-		//			msg.Outgoing <- "b0b0"
-		//		}
+func startSocketMonitor(polltimeout time.Duration) {
+	// Create sockets here so that polling will not need a lock
+	qlzSockets, err := createSockets()
+	if err != nil {
+		log.Fatalf("FATAL: error when attempting to create sockets: %s", err)
 	}
-}
-
-func monitorSockets(qlzsockets []*qlZmqSocket, polltimeout time.Duration) {
-	// Message received from polled RCON socket to be read/processed
-	rconMsg := &message{
-		timeReceived: time.Now(),
-		incoming:     make(chan string),
-	}
-	// Message received from polled monitor socket to be read/processed
-	monMsg := &message{
-		timeReceived: time.Now(),
-		incoming:     make(chan string),
-	}
-
-	// Sockets (*zmq4.Socket)
-	var zRconSocket *zmq.Socket
-	var zMonitorSocket *zmq.Socket
-
-	// *qlZmqSocket
-	var qRconSocket *qlZmqSocket
-
-	for _, qzs := range qlzsockets {
-		if qzs.typeQlSocket == socketRcon {
-			qRconSocket = qzs
-			zRconSocket = qzs.socket
-		} else if qzs.typeQlSocket == socketMonitor {
-			zMonitorSocket = qzs.socket
+	// Incoming rcon messages from web
+	for _, s := range qlzSockets {
+		if s.typeQlSocket == smtRcon {
+			go ListenForRconMessagesFromWeb(s)
 		}
 	}
 
-	go readZmqMonitorSocketMsg(monMsg)
-	go readZmqRconSocketMsg(rconMsg, qRconSocket)
+	// Messages received from polled sockets to be read/processed
+	socketMsg := &message{timeReceived: time.Now(), incoming: make(chan string)}
+	go readZmqSocketMsg(socketMsg)
+
+	// Sockets for zmq poller (*zmq4.Socket)
+	var zRconSocket *zmq.Socket
+	var zMonitorSocket *zmq.Socket
+	for _, qzs := range qlzSockets {
+		if qzs.typeQlSocket == smtRcon {
+			zRconSocket = qzs.socket
+		} else if qzs.typeQlSocket == smtMonitor {
+			zMonitorSocket = qzs.socket
+		}
+	}
 
 	poller := zmq.NewPoller()
 	poller.Add(zRconSocket, zmq.POLLIN)
 	poller.Add(zMonitorSocket, zmq.POLLIN)
 
+	// Incoming messages from ZMQ
 	for {
-		zmqsockets, _ := poller.Poll(polltimeout)
-		for _, zmqsock := range zmqsockets {
+		zmqSockets, _ := poller.Poll(polltimeout)
+		for _, zmqsock := range zmqSockets {
 			switch z := zmqsock.Socket; z {
 			case zRconSocket:
-				// Process Rcon socket message
-				// see note in StartRcon(); z.Recv() here might require a lock
 				msg, err := z.Recv(0)
 				if err != nil {
 					fmt.Printf("Error polling msg from rcon socket: %s\n", err)
 					continue
 				}
 				if len(msg) != 0 {
-					rconMsg.incoming <- msg
-					rconMsg.timeReceived = time.Now()
+					socketMsg.incoming <- msg
+					socketMsg.msgType = smtRcon
+					socketMsg.timeReceived = time.Now()
 				}
 			case zMonitorSocket:
-				// Process Monitor socket messages
-				// see note in StartRcon(); z.RecvEvent() here might require a lock
-				ev, adr, val, err := z.RecvEvent(0)
+				ev, adr, _, err := z.RecvEvent(0)
 				if err != nil {
 					fmt.Printf("Error polling msg from monitor socket: %s\n", err)
 					continue
 				}
-				monMsg.incoming <- fmt.Sprintf("%s %s %d", ev, adr, val)
-				monMsg.timeReceived = time.Now()
+				socketMsg.incoming <- fmt.Sprintf("%s %s", ev, adr)
+				socketMsg.msgType = smtMonitor
+				socketMsg.timeReceived = time.Now()
 			}
 		}
 	}
@@ -235,38 +208,20 @@ func readConfig(filename string) (qc *qlZmqConfig, err error) {
 	return qc, nil
 }
 
-// listen for messages from web ui to send to rcon(zmq)
-func ListenForMessagesFromWeb(rconsock *qlZmqSocket) {
+// listen for messages from web ui to forward to rcon(zmq)
+func ListenForRconMessagesFromWeb(rconsock *qlZmqSocket) {
 	for m := range bridge.MessageBridge.OutToRcon {
-		// received message from web UI, send it to socket
 		rconsock.doRconAction(string(m))
 	}
 }
 
-func StartRcon() error {
+func StartRcon() {
 	rconconfig, err := readConfig(qlZmqCfgFilename)
 	if err != nil {
-		return fmt.Errorf("Unable to read rcon configuration file: %s", err)
+		log.Fatalf("FATAL: unable to read rcon configuration file: %s", err)
 	}
-	cfg = &qlZmqConfig{
-		QlZmqHost:            rconconfig.QlZmqHost,
-		QlZmqRconPort:        rconconfig.QlZmqRconPort,
-		QlZmqRconPassword:    rconconfig.QlZmqRconPassword,
-		QlZmqRconPollTimeOut: rconconfig.QlZmqRconPollTimeOut,
-	}
-	sockets, err := initSockets()
-	if err != nil {
-		return fmt.Errorf("Error when attempting to create sockets: %s", err)
-	}
+	cfg = rconconfig
 
-	for _, s := range sockets {
-		if s.typeQlSocket == socketRcon {
-			go ListenForMessagesFromWeb(s)
-		}
-	}
-
-	// passing sockets as part of this goroutine might not be thread-safe; investigate
-	go monitorSockets(sockets, cfg.QlZmqRconPollTimeOut*time.Millisecond)
-	fmt.Println("qlrcon: Launched RCON interface")
-	return nil
+	go startSocketMonitor(cfg.QlZmqRconPollTimeOut * time.Millisecond)
+	log.Println("webqlrcon: Launched RCON interface")
 }

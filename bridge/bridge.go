@@ -1,10 +1,6 @@
 // Bridge: rcon (zmq) sockets <-> websocket
 package bridge
 
-//import (
-//	"fmt"
-//)
-
 type bridge struct {
 	RconToWeb chan []byte
 	WebToRcon chan []byte
@@ -24,12 +20,8 @@ func (b *bridge) PassMessages() {
 		select {
 		case twmsg := <-b.RconToWeb:
 			b.OutToWeb <- twmsg
-			//fmt.Printf("Got: %s from rcon(zmq) forwarding to web", string(twmsg))
 		case trmsg := <-b.WebToRcon:
 			b.OutToRcon <- trmsg
-			//fmt.Printf("Got: %s from web(websocket) forwarding to rcon", string(trmsg))
-			//default:
-			//fmt.Println("MessageBridge: doing nothing")
 		}
 	}
 }

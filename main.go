@@ -2,17 +2,16 @@ package main
 
 import (
 	"log"
-	"qlrcon/bridge"
-	"qlrcon/rcon"
-	"qlrcon/web"
+	"webqlrcon/bridge"
+	"webqlrcon/rcon"
+	"webqlrcon/web"
 )
+
+const version = "0.1"
 
 func main() {
 	go bridge.MessageBridge.PassMessages()
-
-	if err := rcon.StartRcon(); err != nil {
-		log.Fatalf("FATAL: error when starting rcon: %s", err)
-	}
-
+	log.Printf("Starting webqlrcon v%s", version)
+	rcon.StartRcon()
 	web.StartWeb()
 }
