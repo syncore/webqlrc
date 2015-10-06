@@ -46,25 +46,6 @@ const (
 var cfg *qlZmqConfig
 var socketMutex = &sync.Mutex{}
 
-func newQlZmqSocket(address string, context *zmq.Context, zmqSockType zmq.Type) (*qlZmqSocket, error) {
-	s, err := zmq.NewSocket(zmqSockType)
-	var qlstype qlSocketOrMsgType
-	if zmqSockType == zmq.DEALER {
-		qlstype = smtRcon
-	} else if zmqSockType == zmq.PAIR {
-		qlstype = smtMonitor
-	}
-	if err != nil {
-		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s", zmqSockType)
-	}
-	return &qlZmqSocket{
-		address:      address,
-		context:      context,
-		socket:       s,
-		typeQlSocket: qlstype,
-	}, nil
-}
-
 func createSockets() ([]*qlZmqSocket, error) {
 	ctx, err := zmq.NewContext()
 	if err != nil {
@@ -87,11 +68,46 @@ func createSockets() ([]*qlZmqSocket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to connect to monitor socket: %s", err)
 	}
-	err = openQlConnection(rconsocket, cfg.QlZmqRconPassword)
+	err = rconsocket.openQlConnection(cfg.QlZmqRconPassword)
 	if err != nil {
 		return nil, fmt.Errorf("Connection error: %s", err)
 	}
 	return socks, nil
+}
+
+func newQlZmqSocket(address string, context *zmq.Context, zmqSockType zmq.Type) (*qlZmqSocket, error) {
+	s, err := zmq.NewSocket(zmqSockType)
+	var qlstype qlSocketOrMsgType
+	if zmqSockType == zmq.DEALER {
+		qlstype = smtRcon
+	} else if zmqSockType == zmq.PAIR {
+		qlstype = smtMonitor
+	}
+	if err != nil {
+		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s", zmqSockType)
+	}
+	return &qlZmqSocket{
+		address:      address,
+		context:      context,
+		socket:       s,
+		typeQlSocket: qlstype,
+	}, nil
+}
+
+func (rconsock *qlZmqSocket) openQlConnection(password string) error {
+	rconsock.socket.SetPlainUsername("rcon")
+	rconsock.socket.SetPlainPassword(password)
+	rconsock.socket.SetZapDomain("rcon")
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rconsock.socket.SetIdentity(fmt.Sprintf("i-%d", r.Int31n(2147483647)))
+	fmt.Printf("Attempting to establish RCON connection to: %s\n", rconsock.address)
+	err := rconsock.socket.Connect(rconsock.address)
+	if err != nil {
+		return fmt.Errorf("Unable to establish RCON connection: %s", err)
+	}
+	fmt.Printf("Registering connection to %s\n", rconsock.address)
+	rconsock.socket.Send("register", 0)
+	return nil
 }
 
 func (rconsock *qlZmqSocket) doRconAction(action string) {
@@ -99,22 +115,6 @@ func (rconsock *qlZmqSocket) doRconAction(action string) {
 	socketMutex.Lock()
 	defer socketMutex.Unlock()
 	rconsock.socket.Send(action, 0)
-}
-
-func openQlConnection(s *qlZmqSocket, password string) error {
-	s.socket.SetPlainUsername("rcon")
-	s.socket.SetPlainPassword(password)
-	s.socket.SetZapDomain("rcon")
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s.socket.SetIdentity(fmt.Sprintf("i-%d", r.Int31n(2147483647)))
-	fmt.Printf("Attempting to establish RCON connection to: %s\n", s.address)
-	err := s.socket.Connect(s.address)
-	if err != nil {
-		return fmt.Errorf("Unable to establish RCON connection: %s", err)
-	}
-	fmt.Printf("Registering connection to %s\n", s.address)
-	s.socket.Send("register", 0)
-	return nil
 }
 
 func readZmqSocketMsg(msg *message) {
@@ -215,7 +215,7 @@ func ListenForRconMessagesFromWeb(rconsock *qlZmqSocket) {
 	}
 }
 
-func StartRcon() {
+func Start() {
 	rconconfig, err := readConfig(qlZmqCfgFilename)
 	if err != nil {
 		log.Fatalf("FATAL: unable to read rcon configuration file: %s", err)

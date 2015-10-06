@@ -39,22 +39,6 @@ var (
 	wsconn *webSocketConn
 )
 
-func readConfig(filename string) (wc *webConfig, err error) {
-	f, openerr := os.Open(filename)
-	defer f.Close()
-	if openerr != nil {
-		return nil, openerr
-	}
-	r := bufio.NewReader(f)
-	dec := json.NewDecoder(r)
-	err = dec.Decode(&wc)
-	if err != nil {
-		return nil, err
-	}
-
-	return wc, nil
-}
-
 func intToDuration(val int, dur time.Duration) time.Duration {
 	return time.Duration(val) * dur
 }
@@ -137,7 +121,23 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 	wsconn.readWebSocket()
 }
 
-func StartWeb() {
+func readConfig(filename string) (wc *webConfig, err error) {
+	f, openerr := os.Open(filename)
+	defer f.Close()
+	if openerr != nil {
+		return nil, openerr
+	}
+	r := bufio.NewReader(f)
+	dec := json.NewDecoder(r)
+	err = dec.Decode(&wc)
+	if err != nil {
+		return nil, err
+	}
+
+	return wc, nil
+}
+
+func Start() {
 	webconfig, err := readConfig(webCfgFilename)
 	if err != nil {
 		log.Fatalf("FATAL: unable to read web configuration file: %s", err)
