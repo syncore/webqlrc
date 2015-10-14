@@ -1,4 +1,4 @@
-// Bridge: rcon (zmq) sockets <-> websocket
+// bridge.go: Bridge for rcon (zmq) sockets <-> websocket
 package bridge
 
 type bridge struct {

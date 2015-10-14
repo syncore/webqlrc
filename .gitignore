@@ -7,6 +7,8 @@
 # Folders
 _obj
 _test
+# webqlrcon specific (conf directory)
+conf
 
 # Architecture specific extensions/prefixes
 *.[568vq]

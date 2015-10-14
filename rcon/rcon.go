@@ -1,25 +1,15 @@
 package rcon
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	zmq "github.com/pebbe/zmq4"
 	"log"
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 	"webqlrcon/bridge"
+	"webqlrcon/config"
 )
-
-type qlZmqConfig struct {
-	// for JSON
-	QlZmqHost            string
-	QlZmqRconPort        int
-	QlZmqRconPassword    string
-	QlZmqRconPollTimeOut time.Duration
-}
 
 type qlSocketOrMsgType int
 
@@ -37,13 +27,12 @@ type qlZmqSocket struct {
 }
 
 const (
-	qlZmqCfgFilename                   = "conf/rcon.conf"
-	smtRcon          qlSocketOrMsgType = 0
-	smtMonitor       qlSocketOrMsgType = 1
-	monitorAddress                     = "inproc://monitor-sock"
+	smtRcon        qlSocketOrMsgType = 0
+	smtMonitor     qlSocketOrMsgType = 1
+	monitorAddress                   = "inproc://monitor-sock"
 )
 
-var cfg *qlZmqConfig
+var cfg *config.Config
 var socketMutex = &sync.Mutex{}
 
 func createSockets() ([]*qlZmqSocket, error) {
@@ -51,7 +40,9 @@ func createSockets() ([]*qlZmqSocket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Context error: %s", err)
 	}
-	rconsocket, err := newQlZmqSocket(fmt.Sprintf("tcp://%s:%d", cfg.QlZmqHost, cfg.QlZmqRconPort), ctx, zmq.DEALER)
+	rconsocket, err := newQlZmqSocket(fmt.Sprintf("tcp://%s:%d", cfg.Rcon.QlZmqHost,
+		cfg.Rcon.QlZmqRconPort), ctx, zmq.DEALER)
+
 	if err != nil {
 		return nil, err
 	}
@@ -68,14 +59,16 @@ func createSockets() ([]*qlZmqSocket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to connect to monitor socket: %s", err)
 	}
-	err = rconsocket.openQlConnection(cfg.QlZmqRconPassword)
+	err = rconsocket.openQlConnection(cfg.Rcon.QlZmqRconPassword)
 	if err != nil {
 		return nil, fmt.Errorf("Connection error: %s", err)
 	}
 	return socks, nil
 }
 
-func newQlZmqSocket(address string, context *zmq.Context, zmqSockType zmq.Type) (*qlZmqSocket, error) {
+func newQlZmqSocket(address string, context *zmq.Context,
+	zmqSockType zmq.Type) (*qlZmqSocket, error) {
+
 	s, err := zmq.NewSocket(zmqSockType)
 	var qlstype qlSocketOrMsgType
 	if zmqSockType == zmq.DEALER {
@@ -84,7 +77,8 @@ func newQlZmqSocket(address string, context *zmq.Context, zmqSockType zmq.Type) 
 		qlstype = smtMonitor
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s", zmqSockType)
+		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s",
+			zmqSockType)
 	}
 	return &qlZmqSocket{
 		address:      address,
@@ -181,7 +175,8 @@ func startSocketMonitor(polltimeout time.Duration) {
 			case zMonitorSocket:
 				ev, adr, _, err := z.RecvEvent(0)
 				if err != nil {
-					fmt.Printf("Error polling msg from monitor socket: %s\n", err)
+					fmt.Printf("Error polling msg from monitor socket: %s\n",
+						err)
 					continue
 				}
 				socketMsg.incoming <- fmt.Sprintf("%s %s", ev, adr)
@@ -192,22 +187,6 @@ func startSocketMonitor(polltimeout time.Duration) {
 	}
 }
 
-func readConfig(filename string) (qc *qlZmqConfig, err error) {
-	f, err := os.Open(filename)
-	defer f.Close()
-	if err != nil {
-		return nil, err
-	}
-	r := bufio.NewReader(f)
-	dec := json.NewDecoder(r)
-	err = dec.Decode(&qc)
-	if err != nil {
-		return nil, err
-	}
-
-	return qc, nil
-}
-
 // listen for messages from web ui to forward to rcon(zmq)
 func ListenForRconMessagesFromWeb(rconsock *qlZmqSocket) {
 	for m := range bridge.MessageBridge.OutToRcon {
@@ -216,12 +195,12 @@ func ListenForRconMessagesFromWeb(rconsock *qlZmqSocket) {
 }
 
 func Start() {
-	rconconfig, err := readConfig(qlZmqCfgFilename)
+	rcfg, err := config.ReadConfig(config.RCON)
 	if err != nil {
-		log.Fatalf("FATAL: unable to read rcon configuration file: %s", err)
+		log.Fatalf("FATAL: unable to read RCON configuration file: %s", err)
 	}
-	cfg = rconconfig
+	cfg = rcfg
 
-	go startSocketMonitor(cfg.QlZmqRconPollTimeOut * time.Millisecond)
-	log.Println("webqlrcon: Launched RCON interface")
+	go startSocketMonitor(cfg.Rcon.QlZmqRconPollTimeout * time.Millisecond)
+	log.Println("webqlrcon %s: Launched RCON interface", config.Version)
 }
