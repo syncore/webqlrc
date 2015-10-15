@@ -101,7 +101,7 @@ func main() {
 
 	// Everything looks good
 	go bridge.MessageBridge.PassMessages()
-	fmt.Printf("Starting webqlrcon v%s", config.Version)
+	fmt.Printf("Starting webqlrcon v%s\n", config.Version)
 	rcon.Start()
 	web.Start()
 }

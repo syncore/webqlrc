@@ -71,15 +71,18 @@ func newQlZmqSocket(address string, context *zmq.Context,
 
 	s, err := zmq.NewSocket(zmqSockType)
 	var qlstype qlSocketOrMsgType
+
 	if zmqSockType == zmq.DEALER {
 		qlstype = smtRcon
 	} else if zmqSockType == zmq.PAIR {
 		qlstype = smtMonitor
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("Unable to create ZMQ socket of type %s",
 			zmqSockType)
 	}
+
 	return &qlZmqSocket{
 		address:      address,
 		context:      context,
@@ -113,11 +116,12 @@ func (rconsock *qlZmqSocket) doRconAction(action string) {
 
 func readZmqSocketMsg(msg *message) {
 	for m := range msg.incoming {
-		// Eventually printing wont be used, since everything is shown in web
-		if msg.msgType == smtMonitor {
-			fmt.Printf("[Monitor] %s\n", m)
-		} else if msg.msgType == smtRcon {
-			fmt.Printf("[Rcon] %s\n", m)
+		if cfg.Rcon.QlZmqShowOnConsole {
+			if msg.msgType == smtMonitor {
+				fmt.Printf("[Monitor] %s\n", m)
+			} else if msg.msgType == smtRcon {
+				fmt.Printf("[Rcon] %s\n", m)
+			}
 		}
 		// send to web ui
 		bridge.MessageBridge.RconToWeb <- []byte(m)
@@ -202,5 +206,5 @@ func Start() {
 	cfg = rcfg
 
 	go startSocketMonitor(cfg.Rcon.QlZmqRconPollTimeout * time.Millisecond)
-	log.Println("webqlrcon %s: Launched RCON interface", config.Version)
+	log.Printf("webqlrcon %s: Launched RCON interface\n", config.Version)
 }

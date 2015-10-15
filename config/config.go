@@ -17,6 +17,7 @@ import (
 var newline string = getNewLineForOS()
 
 const (
+	defaultRconShowOnConsole             = false
 	defaultRconPollTimeOut               = 50
 	defaultWebMaxMessageSize             = 512
 	defaultWebPongTimeout                = 60
@@ -36,6 +37,7 @@ type rconConfig struct {
 	QlZmqRconPort        int
 	QlZmqRconPassword    string
 	QlZmqRconPollTimeout time.Duration
+	QlZmqShowOnConsole   bool
 }
 
 type webConfig struct {
@@ -63,6 +65,7 @@ func getNewLineForOS() string {
 func ReadConfig(ct configType) (*Config, error) {
 	var path string
 	cfg := &Config{}
+
 	if ct == RCON {
 		path = fmt.Sprintf("%s\\%s", ConfigurationDirectory,
 			RconConfigurationFilename)
@@ -72,21 +75,26 @@ func ReadConfig(ct configType) (*Config, error) {
 			WebConfigurationFilename)
 		cfg.Web = &webConfig{}
 	}
+
 	f, err := os.Open(path)
 	defer f.Close()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read config file.")
 	}
+
 	r := bufio.NewReader(f)
 	dec := json.NewDecoder(r)
+
 	if ct == RCON {
 		err = dec.Decode(cfg.Rcon)
 	} else if ct == WEB {
 		err = dec.Decode(cfg.Web)
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return cfg, nil
 }
 
@@ -94,10 +102,13 @@ func CreateRconConfig() error {
 	reader := bufio.NewReader(os.Stdin)
 	rconcfg := &rconConfig{
 		QlZmqRconPollTimeout: defaultRconPollTimeOut,
+		QlZmqShowOnConsole:   defaultRconShowOnConsole,
 	}
+
 	validHost := false
 	for !validHost {
 		fmt.Print("Enter your ZeroMQ QL RCON hostname or IP address: ")
+
 		hostname, err := getRconHostname(reader)
 		if err != nil {
 			fmt.Println(err)
@@ -109,6 +120,7 @@ func CreateRconConfig() error {
 	validPort := false
 	for !validPort {
 		fmt.Print("Enter your ZeroMQ QL RCON port number: ")
+
 		port, err := getPort(reader)
 		if err != nil {
 			fmt.Println(err)
@@ -119,6 +131,7 @@ func CreateRconConfig() error {
 	}
 	validPassword := false
 	for !validPassword {
+
 		fmt.Print("Enter your ZeroMQ QL RCON password: ")
 		password, err := getPassword(reader)
 		if err != nil {
@@ -157,6 +170,7 @@ func CreateWebConfig() error {
 	}
 	validUser := false
 	for !validUser {
+
 		fmt.Print("Enter the admin user name to use for the web interface: ")
 		user, err := getWebUser(reader)
 		if err != nil {
@@ -168,6 +182,7 @@ func CreateWebConfig() error {
 	}
 	validPassword := false
 	for !validPassword {
+
 		fmt.Print("Enter the admin password to use for the web interface: ")
 		password, err := getPassword(reader)
 		if err != nil {
@@ -182,12 +197,14 @@ func CreateWebConfig() error {
 			}
 		}
 	}
+
 	err := writeConfigFile(webcfg)
 	if err != nil {
 		return fmt.Errorf("Unable to create web configuration file: %s", err)
 	}
 	fmt.Printf("Created web configuration file '%s' in '%s' directory.\n",
 		WebConfigurationFilename, ConfigurationDirectory)
+
 	return nil
 }
 
@@ -196,6 +213,7 @@ func createConfigDirectory() error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 
 }
@@ -233,6 +251,7 @@ func writeConfigFile(cfgfiletype interface{}) error {
 		return fmt.Errorf("Unable to change to configuration directory '%s': %s",
 			ConfigurationDirectory, err)
 	}
+
 	var cfgfile *os.File
 	var fn string
 	if cmsg == "RCON" {
@@ -248,6 +267,7 @@ func writeConfigFile(cfgfiletype interface{}) error {
 			cmsg, fn, err)
 	}
 	cfgfile.Sync()
+
 	writer := bufio.NewWriter(cfgfile)
 	_, err = writer.Write(cfgb)
 	writer.Flush()
@@ -291,6 +311,7 @@ func generateBcryptPassword(password string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Unable to generte encrypted password: %s", err)
 	}
+
 	return encrypted, nil
 }
 
@@ -309,6 +330,7 @@ func getPort(r *bufio.Reader) (int, error) {
 	if port < 1 || port > 65535 {
 		return 0, errors.New("Invalid port. Port must be a number from 1-65535")
 	}
+
 	return port, nil
 }
 
@@ -320,6 +342,7 @@ func getWebUser(r *bufio.Reader) (string, error) {
 	if user == newline {
 		return "", errors.New("User name was not specified.")
 	}
+
 	return strings.Trim(user, newline), nil
 }
 
