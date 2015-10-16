@@ -51,11 +51,11 @@ func main() {
 			config.Version)
 		err := config.CreateRconConfig()
 		if err != nil {
-			fmt.Errorf("Unable to create RCON configuration: %s", err)
+			fmt.Printf("Unable to create RCON configuration: %s\n", err)
 		}
 		err = config.CreateWebConfig()
 		if err != nil {
-			fmt.Errorf("Unable to create web configuration: %s", err)
+			fmt.Printf("Unable to create web configuration: %s\n", err)
 		}
 		os.Exit(0)
 	}
@@ -65,7 +65,7 @@ func main() {
 			config.Version)
 		err := config.CreateRconConfig()
 		if err != nil {
-			fmt.Errorf("Unable to create RCON configuration: %s", err)
+			fmt.Printf("Unable to create RCON configuration: %s\n", err)
 		}
 	}
 	// --webconfig
@@ -74,7 +74,7 @@ func main() {
 			config.Version)
 		err := config.CreateWebConfig()
 		if err != nil {
-			fmt.Errorf("Unable to create web configuration: %s", err)
+			fmt.Printf("Unable to create web configuration: %s\n", err)
 		}
 	}
 	if doRconAndWebConfig || doRconConfig || doWebConfig {
@@ -84,7 +84,7 @@ func main() {
 	// Verify existence and ability to read config files
 	_, err := config.ReadConfig(config.RCON)
 	if err != nil {
-		fmt.Printf("Could not read RCON configuration file: '%s\\%s'\n",
+		fmt.Printf("Could not read RCON configuration file '%s' in '%s' directory\n",
 			config.ConfigurationDirectory, config.RconConfigurationFilename)
 		fmt.Printf("You must first generate the file with: %s --%s or --%s\n",
 			os.Args[0], bothConfigureFlag, rconConfigureFlag)
@@ -92,7 +92,7 @@ func main() {
 	}
 	_, err = config.ReadConfig(config.WEB)
 	if err != nil {
-		fmt.Printf("Could not read web configuration file: '%s\\%s'\n",
+		fmt.Printf("Could not read web configuration file: '%s' in '%s' directory\n",
 			config.ConfigurationDirectory, config.WebConfigurationFilename)
 		fmt.Printf("You must first generate the file with: %s --%s or --%s\n",
 			os.Args[0], bothConfigureFlag, webConfigureFlag)

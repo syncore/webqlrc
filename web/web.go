@@ -2,13 +2,14 @@ package web
 
 import (
 	"fmt"
-	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
 	"text/template"
 	"time"
 	"webqlrcon/bridge"
 	"webqlrcon/config"
+
+	"github.com/gorilla/websocket"
 )
 
 type webSocketConn struct {
@@ -62,7 +63,7 @@ func (c *webSocketConn) writeWebSocket() {
 	}()
 	for {
 		select {
-		// received msg from bridge (i.e. from rcon) that needs to go out to UI via websocket
+		// recv msg from bridge (i.e. from rcon) that needs to go out to UI via websocket
 		case msg, ok := <-bridge.MessageBridge.OutToWeb:
 			if !ok {
 				c.write(websocket.CloseMessage, []byte{})
@@ -116,8 +117,8 @@ func Start() {
 	http.HandleFunc("/", serveRoot)
 	http.HandleFunc("/ws", serveWs)
 	port := fmt.Sprintf(":%d", cfg.Web.WebServerPort)
-	log.Printf("webqlrcon %s: Starting web server on http://localhost%s", config.Version,
-		port)
+	log.Printf("webqlrcon %s: Starting web server on http://localhost%s",
+		config.Version, port)
 	err = http.ListenAndServe(port, nil)
 	if err != nil {
 		log.Fatalf("FATAL: unable to start webserver: %s", err)

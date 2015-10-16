@@ -2,13 +2,14 @@ package rcon
 
 import (
 	"fmt"
-	zmq "github.com/pebbe/zmq4"
 	"log"
 	"math/rand"
 	"sync"
 	"time"
 	"webqlrcon/bridge"
 	"webqlrcon/config"
+
+	zmq "github.com/pebbe/zmq4"
 )
 
 type qlSocketOrMsgType int
@@ -53,7 +54,7 @@ func createSockets() ([]*qlZmqSocket, error) {
 	socks := []*qlZmqSocket{rconsocket, monitorsocket}
 	err = rconsocket.socket.Monitor(monitorAddress, zmq.EVENT_ALL)
 	if err != nil {
-		return nil, fmt.Errorf("Monitor callback error: %s, err")
+		return nil, fmt.Errorf("Monitor callback error: %s", err)
 	}
 	err = monitorsocket.socket.Connect(monitorAddress)
 	if err != nil {

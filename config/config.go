@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/bcrypt"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 var newline string = getNewLineForOS()
@@ -63,20 +65,18 @@ func getNewLineForOS() string {
 }
 
 func ReadConfig(ct configType) (*Config, error) {
-	var path string
+	var fpath string
 	cfg := &Config{}
 
 	if ct == RCON {
-		path = fmt.Sprintf("%s\\%s", ConfigurationDirectory,
-			RconConfigurationFilename)
+		fpath = path.Join(ConfigurationDirectory, RconConfigurationFilename)
 		cfg.Rcon = &rconConfig{}
 	} else if ct == WEB {
-		path = fmt.Sprintf("%s\\%s", ConfigurationDirectory,
-			WebConfigurationFilename)
+		fpath = path.Join(ConfigurationDirectory, WebConfigurationFilename)
 		cfg.Web = &webConfig{}
 	}
 
-	f, err := os.Open(path)
+	f, err := os.Open(fpath)
 	defer f.Close()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read config file.")
