@@ -1,14 +1,17 @@
+// web.go - Web server and websocket operations.
 package web
 
 import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"text/template"
 	"time"
 	"webqlrcon/bridge"
 	"webqlrcon/config"
 
+	"github.com/apexskier/httpauth"
 	"github.com/gorilla/websocket"
 )
 
@@ -16,14 +19,25 @@ type webSocketConn struct {
 	w *websocket.Conn
 }
 
+const (
+	mainRoute      = "/"
+	getLoginRoute  = "/login"
+	postLoginRoute = "/sendlogin"
+	webSocketRoute = "/ws"
+)
+
 var (
-	rootTemplate = template.Must(template.ParseFiles("html/root_template.html"))
-	upgrader     = websocket.Upgrader{
+	cfg           *config.Config
+	loginTemplate = template.Must(template.ParseFiles("html/login_template.html"))
+	rootTemplate  = template.Must(template.ParseFiles("html/root_template.html"))
+	upgrader      = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
-	cfg    *config.Config
-	wsconn *webSocketConn
+	webauthbackend httpauth.GobFileAuthBackend
+	webauthorizer  httpauth.Authorizer
+	webroles       = config.WebRoles
+	wsconn         *webSocketConn
 )
 
 func intToDuration(val int, dur time.Duration) time.Duration {
@@ -51,12 +65,14 @@ func (c *webSocketConn) readWebSocket() {
 }
 
 func (c *webSocketConn) write(msgtype int, contents []byte) error {
-	c.w.SetWriteDeadline(time.Now().Add(intToDuration(cfg.Web.WebSendTimeout, time.Second)))
+	c.w.SetWriteDeadline(time.Now().Add(intToDuration(cfg.Web.WebSendTimeout,
+		time.Second)))
 	return c.w.WriteMessage(msgtype, contents)
 }
 
 func (c *webSocketConn) writeWebSocket() {
-	pingTicker := time.NewTicker(intToDuration((cfg.Web.WebPongTimeout*9)/10, time.Second))
+	pingTicker := time.NewTicker(intToDuration((cfg.Web.WebPongTimeout*9)/10,
+		time.Second))
 	defer func() {
 		pingTicker.Stop()
 		c.w.Close()
@@ -81,8 +97,39 @@ func (c *webSocketConn) writeWebSocket() {
 	}
 }
 
+func serveGetLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "405: Not allowed", 405)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct {
+		Messages       []string
+		PostLoginRoute string
+	}{
+		webauthorizer.Messages(w, r),
+		postLoginRoute,
+	}
+	loginTemplate.Execute(w, data)
+}
+
+func servePostLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "405: Not allowed", 405)
+		return
+	}
+	username := r.PostFormValue("username")
+	password := r.PostFormValue("password")
+	if err := webauthorizer.Login(w, r, username, password,
+		mainRoute); err != nil && err.Error() == "already authenticated" {
+		http.Redirect(w, r, mainRoute, http.StatusSeeOther)
+	} else if err != nil {
+		http.Redirect(w, r, getLoginRoute, http.StatusSeeOther)
+	}
+}
+
 func serveRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != mainRoute {
 		http.Error(w, "404: Not found", 404)
 		return
 	}
@@ -90,8 +137,21 @@ func serveRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "405: Not allowed", 405)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	rootTemplate.Execute(w, r.Host)
+	if err := webauthorizer.Authorize(w, r, true); err != nil {
+		http.Redirect(w, r, getLoginRoute, http.StatusSeeOther)
+		return
+	}
+	if user, err := webauthorizer.CurrentUser(w, r); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		data := struct {
+			User httpauth.UserData
+			Host string
+		}{
+			user,
+			r.Host,
+		}
+		rootTemplate.Execute(w, data)
+	}
 }
 
 func serveWs(w http.ResponseWriter, r *http.Request) {
@@ -109,16 +169,31 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 }
 
 func Start() {
-	wcfg, err := config.ReadConfig(config.WEB)
+	var err error
+	cfg, err = config.ReadConfig(config.WEB)
 	if err != nil {
 		log.Fatalf("FATAL: unable to read web configuration file: %s", err)
 	}
-	cfg = wcfg
-	http.HandleFunc("/", serveRoot)
-	http.HandleFunc("/ws", serveWs)
 	port := fmt.Sprintf(":%d", cfg.Web.WebServerPort)
 	log.Printf("webqlrcon %s: Starting web server on http://localhost%s",
 		config.Version, port)
+
+	webauthbackend, err := httpauth.NewGobFileAuthBackend(path.Join(config.ConfigurationDirectory,
+		config.WebUserFilename))
+	if err != nil {
+		log.Fatalf("FATAL: unable to create web authorization backend: %s", err)
+	}
+
+	webauthorizer, err = httpauth.NewAuthorizer(webauthbackend,
+		[]byte("cookie-encryption-key"), "admin", webroles)
+	if err != nil {
+		log.Fatalf("FATAL: unable to create web authorizer: %s", err)
+	}
+
+	http.HandleFunc(mainRoute, serveRoot)
+	http.HandleFunc(getLoginRoute, serveGetLogin)
+	http.HandleFunc(postLoginRoute, servePostLogin)
+	http.HandleFunc(webSocketRoute, serveWs)
 	err = http.ListenAndServe(port, nil)
 	if err != nil {
 		log.Fatalf("FATAL: unable to start webserver: %s", err)

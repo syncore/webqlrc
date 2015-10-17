@@ -32,7 +32,7 @@
     });
 
     if (window["WebSocket"]) {
-        conn = new WebSocket("ws://{{$}}/ws");
+        conn = new WebSocket("ws://{{$.Host}}/ws");
         conn.onclose = function(evt) {
             appendLog($("<div><b>Connection closed.</b></div>"))
         }
@@ -88,7 +88,11 @@ body {
 </style>
 </head>
 <body>
+<!--{{ with .User}}
+<h1>Logged in as: {{ .Username }} </h1>
+{{ end }}-->
 <div id="log"></div>
+
 <form id="form">
     <input type="submit" value="Send to QL" />
     <input type="text" id="msg" size="64"/>

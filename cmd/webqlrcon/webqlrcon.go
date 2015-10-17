@@ -85,7 +85,7 @@ func main() {
 	_, err := config.ReadConfig(config.RCON)
 	if err != nil {
 		fmt.Printf("Could not read RCON configuration file '%s' in '%s' directory\n",
-			config.ConfigurationDirectory, config.RconConfigurationFilename)
+			config.RconConfigurationFilename, config.ConfigurationDirectory)
 		fmt.Printf("You must first generate the file with: %s --%s or --%s\n",
 			os.Args[0], bothConfigureFlag, rconConfigureFlag)
 		os.Exit(1)
@@ -93,8 +93,17 @@ func main() {
 	_, err = config.ReadConfig(config.WEB)
 	if err != nil {
 		fmt.Printf("Could not read web configuration file: '%s' in '%s' directory\n",
-			config.ConfigurationDirectory, config.WebConfigurationFilename)
+			config.WebConfigurationFilename, config.ConfigurationDirectory)
 		fmt.Printf("You must first generate the file with: %s --%s or --%s\n",
+			os.Args[0], bothConfigureFlag, webConfigureFlag)
+		os.Exit(1)
+	}
+	// Verify existence and ability to read web user file
+	err = config.VerifyWebUserFile()
+	if err != nil {
+		fmt.Printf("Error reading web user file: '%s' in '%s' directory\n",
+			config.WebUserFilename, config.ConfigurationDirectory)
+		fmt.Printf("To generate a new web user file, run the web configuration with: %s --%s or --%s\n",
 			os.Args[0], bothConfigureFlag, webConfigureFlag)
 		os.Exit(1)
 	}

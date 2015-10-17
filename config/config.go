@@ -1,4 +1,4 @@
-// config.go - Generate rcon and/or web configuration files
+// config.go - RCON and web configuration (file) operations.
 package config
 
 import (
@@ -13,10 +13,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apexskier/httpauth"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
-var newline string = getNewLineForOS()
+var (
+	newline  string = getNewLineForOS()
+	WebRoles        = map[string]httpauth.Role{
+		"admin": 100,
+	}
+)
 
 const (
 	defaultRconShowOnConsole             = false
@@ -27,6 +34,7 @@ const (
 	ConfigurationDirectory               = "conf"
 	RconConfigurationFilename            = "rcon.conf"
 	WebConfigurationFilename             = "web.conf"
+	WebUserFilename                      = "web.user"
 	Version                              = "0.1"
 	RCON                      configType = 0
 	WEB                       configType = 1
@@ -47,8 +55,6 @@ type webConfig struct {
 	WebPongTimeout    int
 	WebSendTimeout    int
 	WebServerPort     int
-	WebAdminUser      string
-	WebAdminPassword  string
 }
 
 type Config struct {
@@ -169,18 +175,19 @@ func CreateWebConfig() error {
 		}
 	}
 	validUser := false
+	var user string
 	for !validUser {
-
 		fmt.Print("Enter the admin user name to use for the web interface: ")
-		user, err := getWebUser(reader)
+		u, err := getWebUser(reader)
 		if err != nil {
 			fmt.Println(err)
 		} else {
-			webcfg.WebAdminUser = user
+			user = u
 			validUser = true
 		}
 	}
 	validPassword := false
+	var pass []byte
 	for !validPassword {
 
 		fmt.Print("Enter the admin password to use for the web interface: ")
@@ -192,19 +199,65 @@ func CreateWebConfig() error {
 			if err != nil {
 				fmt.Println(err)
 			} else {
-				webcfg.WebAdminPassword = string(pw)
+				pass = pw
 				validPassword = true
 			}
 		}
 	}
 
-	err := writeConfigFile(webcfg)
+	err := createWebUser(user, pass)
+	if err != nil {
+		return fmt.Errorf("Unable to create web user file: %s", err)
+	}
+
+	err = writeConfigFile(webcfg)
 	if err != nil {
 		return fmt.Errorf("Unable to create web configuration file: %s", err)
 	}
 	fmt.Printf("Created web configuration file '%s' in '%s' directory.\n",
 		WebConfigurationFilename, ConfigurationDirectory)
 
+	return nil
+}
+
+func VerifyWebUserFile() error {
+	fpath := path.Join(ConfigurationDirectory, WebUserFilename)
+	backend, err := httpauth.NewGobFileAuthBackend(fpath)
+	defer backend.Close() // currently noop for gob
+	if err != nil {
+		return err
+	}
+	_, err = backend.Users()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func createWebUser(username string, pass []byte) error {
+	fpath := path.Join(ConfigurationDirectory, WebUserFilename)
+	webuserfile, err := os.Create(fpath)
+	defer webuserfile.Close()
+	if err != nil {
+		return err
+	}
+	webuserfile.Sync()
+
+	backend, err := httpauth.NewGobFileAuthBackend(fpath)
+	if err != nil {
+		return err
+	}
+	defer backend.Close() // currently noop for gob
+	newuser := httpauth.UserData{
+		Username: username,
+		Email:    fmt.Sprintf("%s@localhost", username),
+		Hash:     pass,
+		Role:     "admin",
+	}
+	err = backend.SaveUser(newuser)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -344,16 +397,4 @@ func getWebUser(r *bufio.Reader) (string, error) {
 	}
 
 	return strings.Trim(user, newline), nil
-}
-
-// test
-func passwordsMatch(hashed, password []byte) bool {
-	result := bcrypt.CompareHashAndPassword(hashed, password)
-	if result != nil {
-		fmt.Println("ERROR: Hashed password does not match password!")
-		return false
-	} else {
-		fmt.Println("SUCCESS: Passwords match!!!!!")
-		return true
-	}
 }

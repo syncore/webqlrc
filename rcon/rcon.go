@@ -200,11 +200,11 @@ func ListenForRconMessagesFromWeb(rconsock *qlZmqSocket) {
 }
 
 func Start() {
-	rcfg, err := config.ReadConfig(config.RCON)
+	var err error
+	cfg, err = config.ReadConfig(config.RCON)
 	if err != nil {
 		log.Fatalf("FATAL: unable to read RCON configuration file: %s", err)
 	}
-	cfg = rcfg
 
 	go startSocketMonitor(cfg.Rcon.QlZmqRconPollTimeout * time.Millisecond)
 	log.Printf("webqlrcon %s: Launched RCON interface\n", config.Version)
