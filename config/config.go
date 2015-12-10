@@ -83,10 +83,10 @@ func ReadConfig(ct configType) (*Config, error) {
 	}
 
 	f, err := os.Open(fpath)
-	defer f.Close()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read config file.")
 	}
+	defer f.Close()
 
 	r := bufio.NewReader(f)
 	dec := json.NewDecoder(r)
@@ -223,10 +223,11 @@ func CreateWebConfig() error {
 func VerifyWebUserFile() error {
 	fpath := path.Join(ConfigurationDirectory, WebUserFilename)
 	backend, err := httpauth.NewGobFileAuthBackend(fpath)
-	defer backend.Close() // currently noop for gob
+	// currently noop for gob
 	if err != nil {
 		return err
 	}
+	defer backend.Close()
 	_, err = backend.Users()
 	if err != nil {
 		return err
@@ -237,10 +238,10 @@ func VerifyWebUserFile() error {
 func createWebUser(username string, pass []byte) error {
 	fpath := path.Join(ConfigurationDirectory, WebUserFilename)
 	webuserfile, err := os.Create(fpath)
-	defer webuserfile.Close()
 	if err != nil {
 		return err
 	}
+	defer webuserfile.Close()
 	webuserfile.Sync()
 
 	backend, err := httpauth.NewGobFileAuthBackend(fpath)
@@ -314,11 +315,11 @@ func writeConfigFile(cfgfiletype interface{}) error {
 	}
 
 	cfgfile, err = os.Create(fn)
-	defer cfgfile.Close()
 	if err != nil {
 		return fmt.Errorf("Unable to create %s configuration file '%s': %s",
 			cmsg, fn, err)
 	}
+	defer cfgfile.Close()
 	cfgfile.Sync()
 
 	writer := bufio.NewWriter(cfgfile)
