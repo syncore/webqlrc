@@ -8,8 +8,8 @@ import (
 	"path"
 	"text/template"
 	"time"
-	"webqlrcon/bridge"
-	"webqlrcon/config"
+	"webqlrc/bridge"
+	"webqlrc/config"
 
 	"github.com/apexskier/httpauth"
 	"github.com/gorilla/websocket"

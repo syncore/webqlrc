@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-	"webqlrcon/bridge"
-	"webqlrcon/config"
+	"webqlrc/bridge"
+	"webqlrc/config"
 
 	zmq "github.com/pebbe/zmq4"
 )

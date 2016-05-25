@@ -1,14 +1,14 @@
-// webqlrcon.go - The entry point. Parse flags and start the application.
+// webqlrc.go - The entry point. Parse flags and start the application.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
-	"webqlrcon/bridge"
-	"webqlrcon/config"
-	"webqlrcon/rcon"
-	"webqlrcon/web"
+	"webqlrc/bridge"
+	"webqlrc/config"
+	"webqlrc/rcon"
+	"webqlrc/web"
 )
 
 const (
@@ -47,7 +47,7 @@ func main() {
 	// Parse flags, if any
 	// --config
 	if doRconAndWebConfig {
-		fmt.Printf("webqlrcon %s: Create web and RCON configuration files\n",
+		fmt.Printf("webqlrc %s: Create web and RCON configuration files\n",
 			config.Version)
 		err := config.CreateRconConfig()
 		if err != nil {
@@ -61,7 +61,7 @@ func main() {
 	}
 	// --rconconfig
 	if doRconConfig {
-		fmt.Printf("webqlrcon %s: Create RCON configuration file\n",
+		fmt.Printf("webqlrc %s: Create RCON configuration file\n",
 			config.Version)
 		err := config.CreateRconConfig()
 		if err != nil {
@@ -70,7 +70,7 @@ func main() {
 	}
 	// --webconfig
 	if doWebConfig {
-		fmt.Printf("webqlrcon %s: Create web configuration file\n",
+		fmt.Printf("webqlrc %s: Create web configuration file\n",
 			config.Version)
 		err := config.CreateWebConfig()
 		if err != nil {
@@ -110,7 +110,7 @@ func main() {
 
 	// Everything looks good
 	go bridge.MessageBridge.PassMessages()
-	fmt.Printf("Starting webqlrcon v%s\n", config.Version)
+	fmt.Printf("Starting webqlrc v%s\n", config.Version)
 	rcon.Start()
 	web.Start()
 }
